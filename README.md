@@ -1,5 +1,7 @@
 # OnlyOffice Document Server Unauthenticated RCE
 
+# 完全由glm5.3flash驱动 测试环境是windows，linux环境需要修改脚本
+
 ## TL;DR
 
 漏洞 = **未授权路径穿越任意文件写** × **runtimeConfig 热加载配置注入** → RCE。
