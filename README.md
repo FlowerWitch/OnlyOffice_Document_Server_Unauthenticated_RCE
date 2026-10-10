@@ -2,6 +2,8 @@
 
 # 完全由glm5.3flash驱动 测试环境是windows，linux环境需要修改脚本
 
+# 注意linux下和这个不一样，你需要个ds用户能写入并且execve的，这里可以使用log文件。
+
 ## TL;DR
 
 漏洞 = **未授权路径穿越任意文件写** × **runtimeConfig 热加载配置注入** → RCE。
